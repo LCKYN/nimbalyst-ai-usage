@@ -1,7 +1,7 @@
 {
   "id": "com.nimbalyst.ai-usage",
   "name": "AI Usage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Token, cost, session, and tool usage across your AI sessions",
   "author": "Nimbalyst",
   "main": "dist/index.js",
