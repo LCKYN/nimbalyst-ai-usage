@@ -38,17 +38,16 @@ export function costSplitTooltip(split: CostSplitUSD, tokens: CostSplitTokens | 
 }
 
 /**
- * What a cost is made of. The bar fills `width`% of its track; the fill is the
- * four kinds in proportion. One tooltip for the whole bar -- a 6px segment is
- * too small to hover.
+ * What a cost is made of: the four kinds in proportion, filling the whole track.
+ * Magnitude is the cost figure beside it, not the bar's length. One tooltip for
+ * the whole bar -- a 6px segment is too small to hover.
  */
 export const CostSplitBar: React.FC<{
   split: CostSplitUSD;
   tokens?: CostSplitTokens;
-  width?: number;
   estimated?: boolean;
   className?: string;
-}> = ({ split, tokens, width = 100, estimated = false, className = '' }) => {
+}> = ({ split, tokens, estimated = false, className = '' }) => {
   const total = split.input + split.output + split.cacheRead + split.cacheWrite;
   const tooltip = costSplitTooltip(split, tokens, estimated);
   return (
@@ -58,7 +57,7 @@ export const CostSplitBar: React.FC<{
       aria-label={tooltip}
       role="img"
     >
-      <div className="flex h-full rounded-sm overflow-hidden" style={{ width: `${width}%` }}>
+      <div className="flex h-full rounded-sm overflow-hidden">
         {total > 0 &&
           COST_SPLIT_KINDS.map(({ key, color }) => (
             <div key={key} className="h-full" style={{ width: `${(split[key] / total) * 100}%`, background: color }} />

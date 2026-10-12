@@ -668,7 +668,6 @@ export const SessionsBreakdown: React.FC<SessionsBreakdownProps> = ({ workspaceI
                             className="sessions-breakdown-share flex-1"
                             split={row.costSplit}
                             tokens={splitTokens(row)}
-                            width={share}
                             estimated={row.costEstimated}
                           />
                         ) : (
