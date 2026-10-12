@@ -327,6 +327,20 @@ const ExpensiveTurns: React.FC<{ row: SessionUsageBreakdownRow; sinceMs?: number
         Most expensive turns
         <span className="font-normal text-nim-muted"> · top {top.length} of {plural(priced.length, 'turn')}</span>
       </div>
+      {/* Spacers mirror the turn row so the token labels sit over their columns. */}
+      <div className="sessions-turns-header flex items-center gap-3 text-nim-muted">
+        <span className="flex-1" />
+        <span className="w-[64px] shrink-0" />
+        <span className="w-[36px] shrink-0" />
+        {COST_SPLIT_KINDS.map(({ key, label, color }) => (
+          <span key={key} className="w-[64px] shrink-0 flex items-center justify-end gap-1">
+            <CostSplitSwatch color={color} />
+            {label}
+          </span>
+        ))}
+        <span className="w-[120px] shrink-0" />
+        <span className="w-[120px] shrink-0" />
+      </div>
       {top.map((turn) => (
         <div key={turn.index} className="sessions-turn flex items-center gap-3">
           <span className="w-[36px] shrink-0 text-nim-muted tabular-nums">#{turn.index}</span>
@@ -342,6 +356,11 @@ const ExpensiveTurns: React.FC<{ row: SessionUsageBreakdownRow; sinceMs?: number
           <span className="w-[36px] shrink-0 text-right text-nim-muted tabular-nums">
             {Math.round((turn.costUSD / pricedTotal) * 100)}%
           </span>
+          {COST_SPLIT_KINDS.map(({ key }) => (
+            <span key={key} className="w-[64px] shrink-0 text-right text-nim-muted tabular-nums">
+              <Tokens value={turn.tokens[key]} />
+            </span>
+          ))}
           <CostSplitBar className="w-[120px] shrink-0" split={turn.split} tokens={turn.tokens} estimated={estimated} />
           <span className="w-[120px] shrink-0">{turn.cacheLikelyExpired && <CacheExpiredBadge turn={turn} />}</span>
         </div>
