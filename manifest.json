@@ -13,7 +13,7 @@
       {
         "id": "report",
         "title": "AI Usage",
-        "icon": "query_stats",
+        "icon": "insights",
         "placement": "fullscreen",
         "tooltip": "Open the AI usage report: tokens, cost, sessions, and tools over time."
       }
