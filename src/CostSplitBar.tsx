@@ -13,14 +13,16 @@ export interface CostSplitUSD {
 export type CostSplitTokens = Record<keyof CostSplitUSD, number>;
 
 /**
- * Fixed colors, no theme variables of their own. Cache read is cheap so it stays
- * quiet; cache write shares `warning` with the "cache likely expired" badge on
- * purpose -- they are the same story.
+ * Fixed colors, no theme variables of their own. Cache read stays neutral but
+ * not `text-faint`: that is too close to the empty track, and cache read is often
+ * most of a session's cost, so the bar read as nearly empty. Cache write shares
+ * `warning` with the "cache likely expired" badge on purpose -- they are the same
+ * story.
  */
 export const COST_SPLIT_KINDS: ReadonlyArray<{ key: keyof CostSplitUSD; label: string; color: string }> = [
   { key: 'input', label: 'In', color: 'var(--nim-info)' },
   { key: 'output', label: 'Out', color: 'var(--nim-primary)' },
-  { key: 'cacheRead', label: 'Cache read', color: 'var(--nim-text-faint)' },
+  { key: 'cacheRead', label: 'Cache read', color: 'var(--nim-text-muted)' },
   { key: 'cacheWrite', label: 'Cache write', color: 'var(--nim-warning)' },
 ];
 
