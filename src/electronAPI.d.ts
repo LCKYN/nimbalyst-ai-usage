@@ -3,5 +3,7 @@
 interface Window {
   electronAPI: {
     invoke: (channel: string, ...args: any[]) => Promise<any>;
+    /** Returns the unsubscribe function. */
+    on: (channel: string, listener: (...args: any[]) => void) => () => void;
   };
 }

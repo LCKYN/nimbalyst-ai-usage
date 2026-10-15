@@ -132,6 +132,15 @@ const SpendCalendar: React.FC<{ daily: CalendarDay[]; sinceMs?: number; measure:
 export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }> = ({ workspaceId, sinceMs }) => {
   const [data, setData] = useState<UsageOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Subset of `ClaudeUsageData` in shared/claudeUsage.ts; utilization is 0-100.
+  const [claudeWeek, setClaudeWeek] = useState<{ utilization: number; resetsAt: string | null } | null>(null);
+
+  useEffect(() => {
+    const apply = (usage: any) => setClaudeWeek(usage && !usage.error ? usage.sevenDay : null);
+    window.electronAPI.invoke('claude-usage:get').then(apply).catch(() => setClaudeWeek(null));
+    // The host broadcasts on every poll and on the usage popover's refresh button.
+    return window.electronAPI.on('claude-usage:update', apply);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +230,15 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
           value={totals.sessionCount.toLocaleString()}
           detail={`across ${plural(totals.projectCount, 'project')}`}
         />
+        {claudeWeek && (
+          <StatCard
+            label="Claude weekly left"
+            value={`${Math.max(0, Math.round(100 - claudeWeek.utilization))}%`}
+            detail={claudeWeek.resetsAt
+              ? `resets ${new Date(claudeWeek.resetsAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
+              : 'of your plan limit'}
+          />
+        )}
       </StatGrid>
 
       <ReportSection
