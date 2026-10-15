@@ -1,10 +1,20 @@
 import { AIUsageReport } from './AIUsageReport';
 import './styles.css';
 
-// The report reads everything over IPC on mount; nothing to set up or tear down.
-export async function activate() {}
+import { recordWeeklyUsage } from './weeklyHistory';
 
-export async function deactivate() {}
+let stopRecording: (() => void) | undefined;
+
+// Records the Claude weekly limit whenever the host polls it, panel open or not,
+// so the spend chart has a history to draw. Everything else is read on mount.
+export async function activate() {
+  stopRecording = window.electronAPI.on('claude-usage:update', recordWeeklyUsage);
+  window.electronAPI.invoke('claude-usage:get').then(recordWeeklyUsage).catch(() => {});
+}
+
+export async function deactivate() {
+  stopRecording?.();
+}
 
 export const panels = {
   report: {

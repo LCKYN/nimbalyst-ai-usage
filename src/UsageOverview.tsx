@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { CHART_TOOLTIP_STYLE, RankedBars, ReportSection, StatCard, StatGrid } from './ReportControls';
 import { calendarWeeks, formatCompactNumber, formatCompactUSD, formatUSD, type CalendarDay } from './usageFormat';
+import { leftPerBucket, loadWeeklyHistory, recordWeeklyUsage, weeklyLeft } from './weeklyHistory';
 
 interface UsageSlice {
   costUSD: number;
@@ -132,11 +133,15 @@ const SpendCalendar: React.FC<{ daily: CalendarDay[]; sinceMs?: number; measure:
 export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }> = ({ workspaceId, sinceMs }) => {
   const [data, setData] = useState<UsageOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
-  // Subset of `ClaudeUsageData` in shared/claudeUsage.ts; utilization is 0-100.
-  const [claudeWeek, setClaudeWeek] = useState<{ utilization: number; resetsAt: string | null } | null>(null);
+  const [claudeWeek, setClaudeWeek] = useState<{ left: number; resetsAt: string | null } | null>(null);
 
   useEffect(() => {
-    const apply = (usage: any) => setClaudeWeek(usage && !usage.error ? usage.sevenDay : null);
+    const apply = (usage: any) => {
+      // Recorded here too so the chart's line includes the reading the card shows.
+      recordWeeklyUsage(usage);
+      const left = weeklyLeft(usage);
+      setClaudeWeek(left === null ? null : { left, resetsAt: usage.sevenDay.resetsAt });
+    };
     window.electronAPI.invoke('claude-usage:get').then(apply).catch(() => setClaudeWeek(null));
     // The host broadcasts on every poll and on the usage popover's refresh button.
     return window.electronAPI.on('claude-usage:update', apply);
@@ -194,7 +199,10 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
     totals.unpricedSessionCount > 0 ? `${plural(totals.unpricedSessionCount, 'session')} not priced` : undefined,
   ].filter(Boolean).join(' · ') || 'as reported by the providers';
 
-  const chartData = data.trend.map((bucket) => ({
+  const weeklyLeftByBucket = leftPerBucket(loadWeeklyHistory(), data.trend.map((bucket) => bucket.startMs));
+  const hasWeeklyLine = weeklyLeftByBucket.some((left) => left !== null);
+  const chartData = data.trend.map((bucket, i) => ({
+    weeklyLeft: weeklyLeftByBucket[i],
     label: new Date(bucket.startMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     fullLabel: data.granularity === 'week'
       ? `Week of ${new Date(bucket.startMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
@@ -233,7 +241,7 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
         {claudeWeek && (
           <StatCard
             label="Claude weekly left"
-            value={`${Math.max(0, Math.round(100 - claudeWeek.utilization))}%`}
+            value={`${claudeWeek.left}%`}
             detail={claudeWeek.resetsAt
               ? `resets ${new Date(claudeWeek.resetsAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`
               : 'of your plan limit'}
@@ -244,10 +252,12 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
       <ReportSection
         className="usage-trend"
         title={`${measure === 'cost' ? 'Spend' : 'Tokens'} per ${unit}`}
-        description={`Counted on the ${unit} each prompt was sent, not the day its session started.`}
+        description={`Counted on the ${unit} each prompt was sent, not the day its session started.${
+          hasWeeklyLine ? ` The line is Claude weekly limit left at the ${unit}'s last reading.` : ''
+        }`}
       >
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--nim-border)" vertical={false} />
             <XAxis dataKey="label" stroke="var(--nim-text-muted)" tick={{ fontSize: 11 }} minTickGap={16} />
             <YAxis
@@ -256,12 +266,24 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
               tick={{ fontSize: 11 }}
               tickFormatter={measure === 'cost' ? formatCompactUSD : formatCompactNumber}
             />
+            {hasWeeklyLine && (
+              <YAxis
+                yAxisId="weekly"
+                orientation="right"
+                domain={[0, 100]}
+                stroke="var(--nim-text-muted)"
+                width={40}
+                tick={{ fontSize: 11 }}
+                tickFormatter={(pct: number) => `${pct}%`}
+              />
+            )}
             <Tooltip
               cursor={{ fill: 'var(--nim-bg-tertiary)' }}
               labelFormatter={(_label, payload) =>
                 (payload?.[0]?.payload as { fullLabel?: string } | undefined)?.fullLabel ?? String(_label)
               }
-              formatter={(_value, _name, item) => {
+              formatter={(value, _name, item) => {
+                if (item.dataKey === 'weeklyLeft') return [`${value}%`, 'Claude weekly left'];
                 const point = item.payload as { costUSD: number; totalTokens: number };
                 return [
                   `${formatUSD(point.costUSD)} · ${formatCompactNumber(point.totalTokens)} tokens`,
@@ -271,7 +293,18 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
               contentStyle={CHART_TOOLTIP_STYLE}
             />
             <Bar dataKey="value" fill="var(--nim-primary)" radius={[2, 2, 0, 0]} />
-          </BarChart>
+            {hasWeeklyLine && (
+              <Line
+                yAxisId="weekly"
+                dataKey="weeklyLeft"
+                type="monotone"
+                stroke="var(--nim-success, #22c55e)"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+                connectNulls
+              />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </ReportSection>
 
