@@ -259,8 +259,6 @@ interface SessionTurn {
   cacheLikelyExpired: boolean;
 }
 
-const TOP_TURNS = 5;
-
 function formatIdle(ms: number): string {
   const minutes = Math.round(ms / 60_000);
   return minutes < 120 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
@@ -315,56 +313,59 @@ const ExpensiveTurns: React.FC<{ row: SessionUsageBreakdownRow; sinceMs?: number
   }
 
   const priced = state.turns.filter((turn) => turn.costUSD > 0);
-  // A "top 5" of one turn is noise.
+  // Ranking one turn is noise.
   if (priced.length < 2) return null;
   const pricedTotal = priced.reduce((sum, turn) => sum + turn.costUSD, 0);
-  const top = [...priced].sort((a, b) => b.costUSD - a.costUSD).slice(0, TOP_TURNS);
+  const ranked = [...priced].sort((a, b) => b.costUSD - a.costUSD);
   const estimated = !row.provider.startsWith('claude-code');
 
   return (
     <div className="sessions-turns flex flex-col gap-1">
       <div className="font-semibold text-nim mb-0.5">
         Most expensive turns
-        <span className="font-normal text-nim-muted"> · top {top.length} of {plural(priced.length, 'turn')}</span>
+        <span className="font-normal text-nim-muted"> · {plural(priced.length, 'turn')}, costliest first</span>
       </div>
-      {/* Spacers mirror the turn row; flex-1 also absorbs the # and date columns. */}
-      <div className="sessions-turns-header flex items-center gap-3 text-nim-muted">
-        <span className="flex-1" />
-        <span className="w-[64px] shrink-0" />
-        <span className="w-[36px] shrink-0" />
-        {TOKEN_COLUMNS.map(({ splitKey, label, title }) => (
-          <span key={splitKey} className="w-[64px] shrink-0 flex items-center justify-end gap-1 whitespace-nowrap" title={title}>
-            <CostSplitSwatch color={splitColor(splitKey)} />
-            {label}
-          </span>
-        ))}
-        <span className="w-[120px] shrink-0" />
-        <span className="w-[120px] shrink-0" />
-      </div>
-      {top.map((turn) => (
-        <div key={turn.index} className="sessions-turn flex items-center gap-3">
-          <span className="w-[36px] shrink-0 text-nim-muted tabular-nums">#{turn.index}</span>
-          <span className="w-[96px] shrink-0 text-nim-muted">
-            {new Date(turn.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <span className="flex-1 min-w-0 truncate text-nim select-text" title={turn.promptPreview || undefined}>
-            {turn.promptPreview || <span className="text-nim-muted">(no text)</span>}
-          </span>
-          <span className="w-[64px] shrink-0 text-right text-nim tabular-nums">
-            <Cost costUSD={turn.costUSD} costEstimated={estimated} />
-          </span>
-          <span className="w-[36px] shrink-0 text-right text-nim-muted tabular-nums">
-            {Math.round((turn.costUSD / pricedTotal) * 100)}%
-          </span>
-          {TOKEN_COLUMNS.map(({ splitKey }) => (
-            <span key={splitKey} className="w-[64px] shrink-0 text-right text-nim-muted tabular-nums">
-              <Tokens value={turn.tokens[splitKey]} />
+      {/* Header sits inside the scroll box so the scrollbar can't misalign its columns. */}
+      <div className="sessions-turns-list flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+        {/* Spacers mirror the turn row; flex-1 also absorbs the # and date columns. */}
+        <div className="sessions-turns-header sticky top-0 bg-[var(--nim-bg-tertiary)] flex items-center gap-3 text-nim-muted">
+          <span className="flex-1" />
+          <span className="w-[64px] shrink-0" />
+          <span className="w-[36px] shrink-0" />
+          {TOKEN_COLUMNS.map(({ splitKey, label, title }) => (
+            <span key={splitKey} className="w-[64px] shrink-0 flex items-center justify-end gap-1 whitespace-nowrap" title={title}>
+              <CostSplitSwatch color={splitColor(splitKey)} />
+              {label}
             </span>
           ))}
-          <CostSplitBar className="w-[120px] shrink-0" split={turn.split} tokens={turn.tokens} estimated={estimated} />
-          <span className="w-[120px] shrink-0">{turn.cacheLikelyExpired && <CacheExpiredBadge turn={turn} />}</span>
+          <span className="w-[120px] shrink-0" />
+          <span className="w-[120px] shrink-0" />
         </div>
-      ))}
+        {ranked.map((turn) => (
+          <div key={turn.index} className="sessions-turn flex items-center gap-3">
+            <span className="w-[36px] shrink-0 text-nim-muted tabular-nums">#{turn.index}</span>
+            <span className="w-[96px] shrink-0 text-nim-muted">
+              {new Date(turn.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span className="flex-1 min-w-0 truncate text-nim select-text" title={turn.promptPreview || undefined}>
+              {turn.promptPreview || <span className="text-nim-muted">(no text)</span>}
+            </span>
+            <span className="w-[64px] shrink-0 text-right text-nim tabular-nums">
+              <Cost costUSD={turn.costUSD} costEstimated={estimated} />
+            </span>
+            <span className="w-[36px] shrink-0 text-right text-nim-muted tabular-nums">
+              {Math.round((turn.costUSD / pricedTotal) * 100)}%
+            </span>
+            {TOKEN_COLUMNS.map(({ splitKey }) => (
+              <span key={splitKey} className="w-[64px] shrink-0 text-right text-nim-muted tabular-nums">
+                <Tokens value={turn.tokens[splitKey]} />
+              </span>
+            ))}
+            <CostSplitBar className="w-[120px] shrink-0" split={turn.split} tokens={turn.tokens} estimated={estimated} />
+            <span className="w-[120px] shrink-0">{turn.cacheLikelyExpired && <CacheExpiredBadge turn={turn} />}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
