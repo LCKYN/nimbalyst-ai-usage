@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   CHART_TOOLTIP_STYLE,
+  ExportButtons,
   RankedBars,
   ReportSection,
   SortableHeader,
@@ -10,6 +11,7 @@ import {
   type SortState,
 } from './ReportControls';
 import { fillDailyCounts, formatCompactNumber } from './usageFormat';
+import { saveCSV, saveJSON } from './exportData';
 
 interface ToolUsageProps {
   workspaceId?: string;
@@ -327,6 +329,25 @@ export const ToolUsage: React.FC<ToolUsageProps> = ({ workspaceId, sinceMs }) =>
         className="tool-usage-table-section"
         title="All tools"
         description="Click a column to sort. Tokens are estimates: what each tool's results add to the conversation, plus what the model writes to call it."
+        actions={
+          <ExportButtons
+            actions={[
+              {
+                label: 'CSV',
+                onClick: () =>
+                  saveCSV('tools', sortedTools.map((tool) => ({
+                    tool: tool.toolName,
+                    mcp_server: tool.mcpServer,
+                    calls: tool.count,
+                    errors: tool.errorCount,
+                    call_tokens: tool.callTokens,
+                    result_tokens: tool.resultTokens,
+                  }))),
+              },
+              { label: 'JSON', onClick: () => saveJSON('tools', sortedTools) },
+            ]}
+          />
+        }
       >
         <table className="tool-usage-table w-full text-xs border-collapse table-fixed">
           <colgroup>

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CHART_TOOLTIP_STYLE, RankedBars, ReportSection, StatCard, StatGrid } from './ReportControls';
-import { formatCompactNumber, formatCompactUSD, formatUSD } from './usageFormat';
+import { copyToClipboard } from '@nimbalyst/extension-sdk';
+import { CHART_TOOLTIP_STYLE, ExportButtons, RankedBars, ReportSection, StatCard, StatGrid } from './ReportControls';
+import { CACHE_HIT_TOOLTIP, cacheHitRate, formatCompactNumber, formatCompactUSD, formatUSD, percentChange } from './usageFormat';
+import { overviewMarkdown, saveJSON } from './exportData';
 import { leftPerBucket, loadWeeklyHistory, recordWeeklyUsage, weeklyLeft } from './weeklyHistory';
 
 interface UsageSlice {
@@ -43,9 +45,23 @@ function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 }
 
-export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }> = ({ workspaceId, sinceMs }) => {
+/** `↑ 12% vs previous 30 days`; `null` when there's no previous period to compare with. */
+function changeText(pct: number | null, rangeLabel: string, what: string): string | null {
+  if (pct === null) return null;
+  const rounded = Math.round(pct);
+  const arrow = rounded > 0 ? '↑' : rounded < 0 ? '↓' : '→';
+  return `${arrow} ${Math.abs(rounded)}%${what} vs previous ${rangeLabel}`;
+}
+
+export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number; rangeLabel: string }> = ({
+  workspaceId,
+  sinceMs,
+  rangeLabel,
+}) => {
   const [data, setData] = useState<UsageOverviewData | null>(null);
+  const [previous, setPrevious] = useState<{ costUSD: number; totalTokens: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
   const [claudeWeek, setClaudeWeek] = useState<{ left: number; resetsAt: string | null } | null>(null);
 
   useEffect(() => {
@@ -64,14 +80,24 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
     let cancelled = false;
     setLoading(true);
     void (async () => {
+      const load = (since: number | undefined): Promise<UsageOverviewData> =>
+        window.electronAPI.invoke('usage-analytics:get-overview', workspaceId, since, new Date().getTimezoneOffset());
       try {
-        const result = await window.electronAPI.invoke(
-          'usage-analytics:get-overview',
-          workspaceId,
-          sinceMs,
-          new Date().getTimezoneOffset(),
-        );
-        if (!cancelled) setData(result);
+        // A window twice as long covers this period and the one before it, so
+        // the previous period is the difference -- no `untilMs` needed.
+        const [result, wider] = await Promise.all([
+          load(sinceMs),
+          sinceMs ? load(sinceMs - (Date.now() - sinceMs)).catch(() => null) : null,
+        ]);
+        if (cancelled) return;
+        setData(result);
+        setPrevious(wider && result
+          ? {
+              // Rounded to the cent so float noise isn't read as a tiny previous spend.
+              costUSD: Math.round((wider.totals.costUSD - result.totals.costUSD) * 100) / 100,
+              totalTokens: wider.totals.totalTokens - result.totals.totalTokens,
+            }
+          : null);
       } catch (error) {
         console.error('[UsageOverview] Failed to load usage overview:', error);
         if (!cancelled) setData(null);
@@ -107,10 +133,33 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
       ? `${slice.costEstimated ? '~' : ''}${formatUSD(slice.costUSD)}`
       : `${formatCompactNumber(slice.totalTokens)} tokens`;
 
+  const change = previous && changeText(
+    measure === 'cost'
+      ? percentChange(totals.costUSD, previous.costUSD)
+      : percentChange(totals.totalTokens, previous.totalTokens),
+    rangeLabel,
+    measure === 'cost' ? '' : ' tokens',
+  );
   const spendDetail = [
+    change,
     totals.costEstimated ? 'partly estimated from list prices' : undefined,
     totals.unpricedSessionCount > 0 ? `${plural(totals.unpricedSessionCount, 'session')} not priced` : undefined,
   ].filter(Boolean).join(' · ') || 'as reported by the providers';
+
+  const cacheHit = cacheHitRate({
+    inputTokens: totals.inputTokens,
+    cacheReadInputTokens: totals.cacheReadTokens,
+    cacheCreationInputTokens: totals.cacheWriteTokens,
+  });
+
+  const copyMarkdown = () => {
+    void copyToClipboard(overviewMarkdown(data, rangeLabel, change))
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch((error: unknown) => console.error('[UsageOverview] Failed to copy Markdown:', error));
+  };
 
   const weeklyLeftByBucket = leftPerBucket(loadWeeklyHistory(), data.trend.map((bucket) => bucket.startMs));
   const hasWeeklyLine = weeklyLeftByBucket.some((left) => left !== null);
@@ -127,11 +176,21 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
 
   return (
     <div className="usage-overview flex flex-col gap-4">
+      <div className="usage-overview-toolbar flex justify-end">
+        <ExportButtons
+          actions={[
+            { label: copied ? 'Copied' : 'Copy Markdown', onClick: copyMarkdown },
+            { label: 'JSON', onClick: () => saveJSON('overview', data) },
+          ]}
+        />
+      </div>
       <StatGrid>
         <StatCard
           label="Spend"
           value={measure === 'cost' ? `${totals.costEstimated ? '~' : ''}${formatUSD(totals.costUSD)}` : '--'}
-          detail={measure === 'cost' ? spendDetail : 'No usage in this range could be priced'}
+          detail={measure === 'cost'
+            ? spendDetail
+            : [change, 'No usage in this range could be priced'].filter(Boolean).join(' · ')}
         />
         <StatCard
           label="Per active day"
@@ -146,6 +205,16 @@ export const UsageOverview: React.FC<{ workspaceId?: string; sinceMs?: number }>
           title={`${Math.round(totals.totalTokens).toLocaleString()} tokens`}
           detail={`${formatCompactNumber(totals.cacheReadTokens)} cached · ${formatCompactNumber(totals.inputTokens + totals.cacheWriteTokens)} new input · ${formatCompactNumber(totals.outputTokens)} output`}
         />
+        {cacheHit !== null && (
+          <StatCard
+            label="Cache hit"
+            value={`${Math.round(cacheHit * 100)}%`}
+            title={CACHE_HIT_TOOLTIP}
+            detail={`${formatCompactNumber(totals.cacheReadTokens)} cached of ${formatCompactNumber(
+              totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens,
+            )} prompt input`}
+          />
+        )}
         <StatCard
           label="Sessions"
           value={totals.sessionCount.toLocaleString()}

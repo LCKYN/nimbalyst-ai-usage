@@ -1,7 +1,28 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 
-import { fillDailyCounts, formatCompactNumber, formatCompactUSD, formatUSD } from '../usageFormat';
+import { cacheHitRate, fillDailyCounts, formatCompactNumber, formatCompactUSD, formatUSD, percentChange } from '../usageFormat';
+
+describe('percentChange', () => {
+  it('is the change from the previous period, in percent', () => {
+    expect(percentChange(112, 100)).toBeCloseTo(12);
+    expect(percentChange(50, 100)).toBeCloseTo(-50);
+  });
+
+  it('is null when there is no previous period to compare against', () => {
+    expect(percentChange(10, 0)).toBeNull();
+  });
+});
+
+describe('cacheHitRate', () => {
+  it('is cache reads over all prompt input, including cache writes', () => {
+    expect(cacheHitRate({ inputTokens: 10, cacheReadInputTokens: 80, cacheCreationInputTokens: 10 })).toBeCloseTo(0.8);
+  });
+
+  it('is null, not 0%, when there was no prompt input', () => {
+    expect(cacheHitRate({ inputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 })).toBeNull();
+  });
+});
 
 describe('fillDailyCounts', () => {
   const now = Date.parse('2026-07-05T12:00:00Z');

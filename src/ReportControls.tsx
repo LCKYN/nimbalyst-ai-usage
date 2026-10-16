@@ -72,7 +72,23 @@ export const ReportSection: React.FC<{
   </section>
 );
 
-export const StatCard: React.FC<{ label: string; value: string; detail?: string; title?: string }> = ({
+/** A row of small buttons for a section header, e.g. exports. */
+export const ExportButtons: React.FC<{ actions: ReadonlyArray<{ label: string; onClick: () => void }> }> = ({ actions }) => (
+  <div className="report-export-buttons flex shrink-0 gap-1">
+    {actions.map((action) => (
+      <button
+        key={action.label}
+        type="button"
+        onClick={action.onClick}
+        className="report-export-button text-[11px] px-2 py-1 rounded-sm border border-nim text-nim-muted hover:text-nim"
+      >
+        {action.label}
+      </button>
+    ))}
+  </div>
+);
+
+export const StatCard:React.FC<{ label: string; value: string; detail?: string; title?: string }> = ({
   label,
   value,
   detail,

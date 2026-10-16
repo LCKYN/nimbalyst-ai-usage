@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 
-import { cacheHitRate, compareRows, filterByTitle, topShare, totalsFor } from '../SessionsBreakdown';
+import { compareRows, filterByTitle, topShare, totalsFor } from '../SessionsBreakdown';
 
 type Row = Parameters<typeof totalsFor>[0][number];
 
@@ -96,15 +96,7 @@ describe('compareRows', () => {
   });
 });
 
-describe('cacheHitRate', () => {
-  it('is cache reads over all prompt input, including cache writes', () => {
-    expect(cacheHitRate(row({ inputTokens: 10, cacheReadInputTokens: 80, cacheCreationInputTokens: 10 }))).toBeCloseTo(0.8);
-  });
-
-  it('is null, not 0%, when there was no prompt input', () => {
-    expect(cacheHitRate(row({ inputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }))).toBeNull();
-  });
-
+describe('cache hit column', () => {
   it('sorts sessions with no input below a real 0% hit rate', () => {
     const none = row({ id: 'none', inputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 });
     const zero = row({ id: 'zero', inputTokens: 50, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 });

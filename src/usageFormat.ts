@@ -69,6 +69,26 @@ export function fillDailyCounts(
   };
 }
 
+/** `(112, 100)` -> `12`. `null` when there's nothing to compare against. */
+export function percentChange(current: number, previous: number): number | null {
+  return previous > 0 ? ((current - previous) / previous) * 100 : null;
+}
+
+export const CACHE_HIT_TOOLTIP = 'Cache reads as a share of all prompt input (new input + cache reads + cache writes)';
+
+/**
+ * Share of prompt input served from cache. `null` when there was no input at
+ * all, so a session that never prompted doesn't read as a 0% hit rate.
+ */
+export function cacheHitRate(t: {
+  inputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+}): number | null {
+  const promptInput = t.inputTokens + t.cacheReadInputTokens + t.cacheCreationInputTokens;
+  return promptInput > 0 ? t.cacheReadInputTokens / promptInput : null;
+}
+
 /** Axis ticks: `$1.2K`, `$40`. */
 export function formatCompactUSD(value: number): string {
   if (!Number.isFinite(value) || value === 0) return '$0';

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { SectionHeading, SegmentedControl, SortableHeader, type SortState as BaseSortState } from './ReportControls';
+import { ExportButtons, SectionHeading, SegmentedControl, SortableHeader, type SortState as BaseSortState } from './ReportControls';
 import { COST_SPLIT_KINDS, CostSplitBar, CostSplitLegend, CostSplitSwatch, type CostSplitTokens, type CostSplitUSD } from './CostSplitBar';
-import { formatCompactNumber, formatUSD } from './usageFormat';
+import { CACHE_HIT_TOOLTIP, cacheHitRate, formatCompactNumber, formatUSD } from './usageFormat';
+import { saveCSV, saveJSON } from './exportData';
 
 interface SessionsBreakdownProps {
   workspaceId?: string;
@@ -78,15 +79,6 @@ type TokenFigures = Pick<
   SessionUsageBreakdownRow,
   'inputTokens' | 'outputTokens' | 'cacheReadInputTokens' | 'cacheCreationInputTokens' | 'totalTokens'
 >;
-
-/**
- * Share of prompt input served from cache. `null` when there was no input at
- * all, so a session that never prompted doesn't read as a 0% hit rate.
- */
-export function cacheHitRate(t: TokenFigures): number | null {
-  const promptInput = t.inputTokens + t.cacheReadInputTokens + t.cacheCreationInputTokens;
-  return promptInput > 0 ? t.cacheReadInputTokens / promptInput : null;
-}
 
 export function compareRows(
   a: SessionUsageBreakdownRow,
@@ -165,6 +157,25 @@ export function topShare(rows: SessionUsageBreakdownRow[], n: number): number {
   return top.reduce((sum, row) => sum + row.costUSD, 0) / total;
 }
 
+function sessionCsvRow(row: SessionUsageBreakdownRow) {
+  const hit = cacheHitRate(row);
+  return {
+    title: row.title,
+    model: row.model ?? row.modelLabel,
+    workstream: row.workstreamTitle,
+    workspace: row.workspaceId,
+    cost_usd: row.costUSD,
+    cost_estimated: row.costEstimated,
+    input: row.inputTokens,
+    output: row.outputTokens,
+    cache_read: row.cacheReadInputTokens,
+    cache_write: row.cacheCreationInputTokens,
+    total: row.totalTokens,
+    cache_hit: hit === null ? null : Math.round(hit * 10_000) / 10_000,
+    last_active: new Date(row.lastActiveAt).toISOString(),
+  };
+}
+
 const ESTIMATED_COST_TOOLTIP = "Estimated from published pricing -- this provider doesn't report exact cost";
 
 /** `groupBy: 'tags'` buckets a multi-tag session under its FIRST tag only, so a session appears once, not once per tag. */
@@ -218,8 +229,6 @@ function splitTokens(figures: TokenFigures): CostSplitTokens {
 
 /** Session, model, cost, the token kinds, cache hit, total, last active. */
 const COLUMN_COUNT = 3 + TOKEN_COLUMNS.length + 3;
-
-const CACHE_HIT_TOOLTIP = 'Cache reads as a share of all prompt input (new input + cache reads + cache writes)';
 
 /** The per-token-kind cells shared by session rows, group headers and the total row. */
 const TokenCells: React.FC<{ figures: TokenFigures; cellClassName: string }> = ({ figures, cellClassName }) => {
@@ -523,15 +532,24 @@ export const SessionsBreakdown: React.FC<SessionsBreakdownProps> = ({ workspaceI
         <SectionHeading description="Sessions active in this range, costliest first. A session that ran partly outside the range counts only the part inside it.">
           Sessions
         </SectionHeading>
-        <SegmentedControl
-          label="Group by"
-          options={(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((value) => ({
-            value,
-            label: GROUP_BY_LABELS[value],
-          }))}
-          value={groupBy}
-          onChange={setGroupBy}
-        />
+        <div className="flex items-center gap-4">
+          <SegmentedControl
+            label="Group by"
+            options={(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((value) => ({
+              value,
+              label: GROUP_BY_LABELS[value],
+            }))}
+            value={groupBy}
+            onChange={setGroupBy}
+          />
+          {/* Exports what the search left visible. */}
+          <ExportButtons
+            actions={[
+              { label: 'CSV', onClick: () => saveCSV('sessions', visibleRows.map(sessionCsvRow)) },
+              { label: 'JSON', onClick: () => saveJSON('sessions', visibleRows) },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-4">

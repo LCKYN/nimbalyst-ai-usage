@@ -99,7 +99,11 @@ export const AIUsageReport: React.FC = () => {
           // One story, top to bottom: how much, over time, where it went, and
           // (last, as context) when you work.
           <>
-            <UsageOverview workspaceId={workspaceFilter} sinceMs={sinceMs} />
+            <UsageOverview
+              workspaceId={workspaceFilter}
+              sinceMs={sinceMs}
+              rangeLabel={DATE_RANGE_OPTIONS.find((option) => option.value === dateRange)!.label}
+            />
             <div className="dashboard-section bg-nim-secondary border border-nim rounded-md p-4">
               <ActivityHeatmap workspaceId={workspaceFilter} sinceMs={sinceMs} />
             </div>
