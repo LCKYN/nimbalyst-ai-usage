@@ -38,7 +38,11 @@ const METRIC_LABELS: Record<ActivityMetric, { title: string; description: string
 
 export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ workspaceId, sinceMs }) => {
   const [data, setData] = useState<ActivityHeatmapData[]>([]);
-  const [tokenData, setTokenData] = useState<TokenHeatmapData[]>([]);
+  // Tokens are tagged with the scope they were read for, so a range change never
+  // shows the previous range's figures.
+  const scope = `${workspaceId ?? ''}|${sinceMs ?? ''}`;
+  const [tokens, setTokens] = useState<{ scope: string; data: TokenHeatmapData[] } | null>(null);
+  const [tokenScope, setTokenScope] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [metric, setMetric] = useState<ActivityMetric>('messages');
   // One tooltip for the whole grid, re-anchored to whichever cell is hovered.
@@ -89,7 +93,12 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ workspaceId, s
   // readout picks tokens up when they arrive and reads fine without them.
   // Metric-independent: the hour's token cost is the same whichever count the
   // cells are showing.
+  //
+  // Not read until the first hover. The host has one database queue, and this
+  // scan (~1-2 s, every output message's content) used to sit in it ahead of the
+  // Overview's own query, holding the whole page on "Loading...".
   useEffect(() => {
+    if (tokenScope !== scope) return;
     let cancelled = false;
     const loadTokens = async () => {
       try {
@@ -99,17 +108,16 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ workspaceId, s
           new Date().getTimezoneOffset(),
           sinceMs,
         );
-        if (!cancelled) setTokenData(Array.isArray(result) ? result : []);
+        if (!cancelled) setTokens({ scope, data: Array.isArray(result) ? result : [] });
       } catch (error) {
         console.error('Failed to load token heatmap:', error);
-        if (!cancelled) setTokenData([]);
       }
     };
     void loadTokens();
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, sinceMs]);
+  }, [tokenScope, scope, workspaceId, sinceMs]);
 
   if (loading) {
     return (
@@ -134,7 +142,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ workspaceId, s
   });
 
   const tokenMap = new Map<string, number>();
-  tokenData.forEach((d) => {
+  (tokens?.scope === scope ? tokens.data : []).forEach((d) => {
     tokenMap.set(`${d.dayOfWeek}-${d.hourOfDay}`, d.totalTokens);
   });
 
@@ -212,12 +220,13 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ workspaceId, s
                           ? `color-mix(in srgb, var(--nim-primary) ${Math.round(intensity * 80)}%, transparent)`
                           : undefined,
                     }}
-                    onMouseEnter={(event) =>
+                    onMouseEnter={(event) => {
+                      setTokenScope(scope);
                       setHoveredCell({
                         text: cellLabel,
                         rect: event.currentTarget.getBoundingClientRect(),
-                      })
-                    }
+                      });
+                    }}
                     onMouseLeave={() => setHoveredCell(null)}
                     // Empty cells carry a count of zero rather than no reading at
                     // all, which is the thing the grid alone cannot express.

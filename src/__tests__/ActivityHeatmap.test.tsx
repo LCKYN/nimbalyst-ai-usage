@@ -59,6 +59,10 @@ describe('ActivityHeatmap hover readout', () => {
 
     render(<ActivityHeatmap />);
 
+    // The scan waits for a hover: run on mount, it queued ahead of the
+    // Overview's query and held the page on "Loading...".
+    fireEvent.mouseEnter(await screen.findByLabelText('Thu 15:00 - 15 messages sent'));
+
     const cell = await screen.findByLabelText('Thu 15:00 - 15 messages sent · 82,430 tokens');
     fireEvent.mouseEnter(cell);
 
@@ -67,6 +71,17 @@ describe('ActivityHeatmap hover readout', () => {
         'Thu 15:00 - 15 messages sent · 82,430 tokens',
       );
     });
+  });
+
+  it('does not start the token scan until the grid is hovered', async () => {
+    render(<ActivityHeatmap />);
+    await screen.findByLabelText('Thu 15:00 - 15 messages sent');
+
+    const channels = () => invoke.mock.calls.map(([channel]) => channel);
+    expect(channels()).not.toContain('usage-analytics:get-token-heatmap');
+
+    fireEvent.mouseEnter(screen.getByLabelText('Thu 15:00 - 15 messages sent'));
+    await waitFor(() => expect(channels()).toContain('usage-analytics:get-token-heatmap'));
   });
 
   // "0 tokens" would claim the hour cost nothing; a missing clause correctly
